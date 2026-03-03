@@ -100,6 +100,19 @@ rotation_matrix_around_y_axis :: proc(angle: f32) -> Mat4 {
     }
 }
 
+rotation_matrix_around_x_axis :: proc(angle: f32) -> Mat4 {
+    rad := angle * math.PI / 180.0
+    cosA := math.cos(rad)
+    sinA := math.sin(rad)
+
+    return Mat4 {
+        {1, 0,    0,     0},
+        {0, cosA, -sinA, 0},
+        {0, sinA, cosA,  0},
+        {0, 0,    0,     1},
+    }
+}
+
 transform_vertex :: proc(v: Vec3, m: Mat4) -> Vec3 {
     return Vec3{
         v[0] * m[0][0] + v[1] * m[1][0] + v[2] * m[2][0],
@@ -137,7 +150,9 @@ project_and_draw :: proc(app: ^App, angle: f32) {
     screen_x2: i32
     screen_y2: i32
     per := perspective_matrix(75.0, f32(SCREEN_WIDTH) / f32(SCREEN_HEIGHT), 0.1, 100.0)
-    rot := rotation_matrix_around_y_axis(angle)
+    rotY := rotation_matrix_around_y_axis(angle)
+    rotX := rotation_matrix_around_x_axis(angle)
+    rot := matrix_multiply(rotY, rotX)
 
     for edge in cube_edges {
         vertex_1 := cube_vertices[edge[0]]
