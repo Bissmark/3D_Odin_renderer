@@ -81,6 +81,9 @@ create_framebuffer :: proc(app: ^App) {
 }
 
 draw_pixel :: proc(app: ^App, x: int, y: int, color: u32) {
+    if x < 0 || x >= SCREEN_WIDTH || y < 0 || y >= SCREEN_HEIGHT {
+        return
+    }
     app.pixels[y * SCREEN_WIDTH + x] = color
 }
 
@@ -105,22 +108,69 @@ transform_vertex :: proc(v: Vec3, m: Mat4) -> Vec3 {
     }
 }
 
+transform_vertex_4 :: proc(v: Vec4, m: Mat4) -> Vec4 {
+    return Vec4 {
+        v[0] * m[0][0] + v[1] * m[1][0] + v[2] * m[2][0] + v[3] * m[3][0],
+        v[0] * m[0][1] + v[1] * m[1][1] + v[2] * m[2][1] + v[3] * m[3][1],
+        v[0] * m[0][2] + v[1] * m[1][2] + v[2] * m[2][2] + v[3] * m[3][2],
+        v[0] * m[0][3] + v[1] * m[1][3] + v[2] * m[2][3] + v[3] * m[3][3],
+    }
+}
+
+perspective_matrix :: proc(fov, aspect, near, far: f32) -> Mat4 {
+    fov_rad := fov * math.PI / 180.0
+    focal_length := 1.0 / math.tan(fov_rad / 2.0)
+    depth_a := -(far + near) / (far - near)
+    depth_b := -(2.0 * far * near) / (far - near)
+
+    return Mat4 {
+        {focal_length / aspect, 0, 0, 0},
+        {0, focal_length, 0, 0},
+        {0, 0, depth_a, -1},
+        {0, 0, -depth_b, 0} 
+    }
+}
+
 project_and_draw :: proc(app: ^App, angle: f32) {
     screen_x1: i32
     screen_y1: i32
     screen_x2: i32
     screen_y2: i32
+    per := perspective_matrix(75.0, f32(SCREEN_WIDTH) / f32(SCREEN_HEIGHT), 0.1, 100.0)
     rot := rotation_matrix_around_y_axis(angle)
 
     for edge in cube_edges {
         vertex_1 := cube_vertices[edge[0]]
         vertex_2 := cube_vertices[edge[1]]
+
+        // apply rotation
         v1 := transform_vertex(vertex_1, rot)
         v2 := transform_vertex(vertex_2, rot)
-        screen_x1 = i32(v1[0] * 200 + SCREEN_WIDTH / 2)
-        screen_y1 = i32(-v1[1] * 200 + SCREEN_HEIGHT / 2)
-        screen_x2 = i32(v2[0] * 200 + SCREEN_WIDTH / 2)
-        screen_y2 = i32(-v2[1] * 200 + SCREEN_HEIGHT / 2)
+        
+        // move cube back so its in view
+        v1[2] += 3.0
+        v2[2] += 3.0
+
+        // convert to Vec4 with w = 1.0
+        v1_4 := Vec4{v1[0], v1[1], v1[2], 1.0}
+        v2_4 := Vec4{v2[0], v2[1], v2[2], 1.0}
+
+        // apply perspective matrix
+        p1 := transform_vertex_4(v1_4, per)
+        p2 := transform_vertex_4(v2_4, per)
+
+        // perspective divide
+        p1_x := p1[0] / p1[3]
+        p1_y := p1[1] / p1[3]
+        p2_x := p2[0] / p2[3]
+        p2_y := p2[1] / p2[3]
+
+        // convert from -1..1 range to screen coordinates
+        screen_x1 = i32((p1_x + 1.0) * f32(SCREEN_WIDTH) / 2.0)
+        screen_y1 = i32((1.0 - p1_y) * f32(SCREEN_HEIGHT) / 2.0)
+        screen_x2 = i32((p2_x + 1.0) * f32(SCREEN_WIDTH) / 2.0)
+        screen_y2 = i32((1.0 - p2_y) * f32(SCREEN_HEIGHT) / 2.0)
+
         draw_line_between_points(app, screen_x1, screen_y1, screen_x2, screen_y2, 0xFFFFFFFF)
     }
 }
@@ -189,7 +239,7 @@ main_loop :: proc(app: ^App) {
             app.pixels[i] = 0x000000FF
         }
 
-        app.angle += 1
+        app.angle += 0.5
         project_and_draw(app, app.angle)
         
         // Upload pixel array to GPU texture
