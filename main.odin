@@ -25,10 +25,20 @@ SCREEN_HEIGHT :: 560
 
 FONT_SIZE :: 40
 
+Vec2i :: [2]i32
 Vec3 :: [3]f32
 Vec4 :: [4]f32
 Mat4 :: [4][4]f32
 Face :: [4]int
+
+face_colors := [6]u32{
+    0xFF0000FF, // red
+    0x00FF00FF, // green
+    0x0000FFFF, // blue
+    0xFFFF00FF, // yellow
+    0xFF00FFFF, // magenta
+    0x00FFFFFF, // cyan
+}
 
 cube_vertices := [8]Vec3 {
     {-0.5, -0.5, -0.5},
@@ -189,6 +199,29 @@ calculate_face_depth :: proc(faces: Face, rot: Mat4) -> f32 {
     return z_values / 4
 }
 
+fill_triangle :: proc(app: ^App, v0, v1, v2: Vec2i, color: u32) {
+    // find bounding box
+    min_x := min(v0[0], min(v1[0], v2[0]))
+    min_y := min(v0[1], min(v1[1], v2[1]))
+    max_x := max(v0[0], max(v1[0], v2[0]))
+    max_y := max(v0[1], max(v1[1], v2[1]))
+
+    // loop over every pixel in the bounding box
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            // edge function - checks which side of each edge the pixel is on
+            w0 := (v1[0]-v0[0])*(y-v0[1]) - (v1[1]-v0[1])*(x-v0[0])
+            w1 := (v2[0]-v1[0])*(y-v1[1]) - (v2[1]-v1[1])*(x-v1[0])
+            w2 := (v0[0]-v2[0])*(y-v2[1]) - (v0[1]-v2[1])*(x-v2[0])
+
+            // pixel is inside triangle if all edge functions have the same sign
+            if (w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0) {
+                draw_pixel(app, int(x), int(y), color)
+            }
+        }
+    }
+}
+
 project_and_draw :: proc(app: ^App, angleX, angleY, angleZ: f32) {
     screen_x1: i32
     screen_y1: i32
@@ -220,41 +253,25 @@ project_and_draw :: proc(app: ^App, angleX, angleY, angleZ: f32) {
             cube_vertices[face_depth_array[i].face[3]],
         }
 
-        edges := [4][2]int{{0,1},{1,2},{2,3},{3,0}}
-        for edge in edges {
-            vertex_1 := verts[edge[0]]
-            vertex_2 := verts[edge[1]]
-
-            // apply rotation
-            v1 := transform_vertex(vertex_1, rot)
-            v2 := transform_vertex(vertex_2, rot)
-            
-            // move cube back so its in view
-            v1[2] += 3.0
-            v2[2] += 3.0
-
-            // convert to Vec4 with w = 1.0
-            v1_4 := Vec4{v1[0], v1[1], v1[2], 1.0}
-            v2_4 := Vec4{v2[0], v2[1], v2[2], 1.0}
-
-            // apply perspective matrix
-            p1 := transform_vertex_4(v1_4, per)
-            p2 := transform_vertex_4(v2_4, per)
-
-            // perspective divide
-            p1_x := p1[0] / p1[3]
-            p1_y := p1[1] / p1[3]
-            p2_x := p2[0] / p2[3]
-            p2_y := p2[1] / p2[3]
-
-            // convert from -1..1 range to screen coordinates
-            screen_x1 = i32((p1_x + 1.0) * f32(SCREEN_WIDTH) / 2.0)
-            screen_y1 = i32((1.0 - p1_y) * f32(SCREEN_HEIGHT) / 2.0)
-            screen_x2 = i32((p2_x + 1.0) * f32(SCREEN_WIDTH) / 2.0)
-            screen_y2 = i32((1.0 - p2_y) * f32(SCREEN_HEIGHT) / 2.0)
-
-            draw_line_between_points(app, screen_x1, screen_y1, screen_x2, screen_y2, 0xFFFFFFFF)
+        // project all 4 vertices to screen space
+    screen_verts: [4]Vec2i
+    for j in 0..<4 {
+        v := transform_vertex(verts[j], rot)
+        v[2] += 3.0
+        v4 := Vec4{v[0], v[1], v[2], 1.0}
+        p := transform_vertex_4(v4, per)
+        px := p[0] / p[3]
+        py := p[1] / p[3]
+        screen_verts[j] = Vec2i{
+            i32((px + 1.0) * f32(SCREEN_WIDTH) / 2.0),
+            i32((1.0 - py) * f32(SCREEN_HEIGHT) / 2.0),
         }
+    }
+
+    // split quad into 2 triangles and fill
+    color := face_colors[i % 6]
+    fill_triangle(app, screen_verts[0], screen_verts[1], screen_verts[2], color)
+    fill_triangle(app, screen_verts[0], screen_verts[2], screen_verts[3], color)
     }
 }
 
