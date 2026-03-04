@@ -59,11 +59,11 @@ cube_edges := [12][2]int {
 
 faces := [6]Face {
     {0, 1, 2, 3},
-    {4, 5, 6, 7},
-    {0, 3, 7, 4},
+    {5, 4, 7, 6},
+    {4, 0, 3, 7},
     {0, 1, 5, 4},
     {1, 2, 6, 5},
-    {3, 2, 6, 7},
+    {2, 3, 7, 6},
 }
 
 FaceDepth :: struct {
@@ -253,25 +253,41 @@ project_and_draw :: proc(app: ^App, angleX, angleY, angleZ: f32) {
             cube_vertices[face_depth_array[i].face[3]],
         }
 
-        // project all 4 vertices to screen space
-    screen_verts: [4]Vec2i
-    for j in 0..<4 {
-        v := transform_vertex(verts[j], rot)
-        v[2] += 3.0
-        v4 := Vec4{v[0], v[1], v[2], 1.0}
-        p := transform_vertex_4(v4, per)
-        px := p[0] / p[3]
-        py := p[1] / p[3]
-        screen_verts[j] = Vec2i{
-            i32((px + 1.0) * f32(SCREEN_WIDTH) / 2.0),
-            i32((1.0 - py) * f32(SCREEN_HEIGHT) / 2.0),
-        }
-    }
+        // Get rotated version of first 3 vertices for normal calculation
+        // rv0 := transform_vertex(verts[0], rot)
+        // rv1 := transform_vertex(verts[1], rot)
+        // rv2 := transform_vertex(verts[2], rot)
 
-    // split quad into 2 triangles and fill
-    color := face_colors[i % 6]
-    fill_triangle(app, screen_verts[0], screen_verts[1], screen_verts[2], color)
-    fill_triangle(app, screen_verts[0], screen_verts[2], screen_verts[3], color)
+        // // Calculate face normal using cross product of 2 edges
+        // edge1 := rv1 - rv0
+        // edge2 := rv2 - rv0
+        // normal := cross_product(edge1, edge2)
+
+        // // Dot product with camera direction, skip face if pointing away
+        // camera_dir := Vec3{0, 0, 1}
+        // if dot_product(normal, camera_dir) > 0 {
+        //     continue
+        // }
+
+        // project all 4 vertices to screen space
+        screen_verts: [4]Vec2i
+        for j in 0..<4 {
+            v := transform_vertex(verts[j], rot)
+            v[2] += 3.0
+            v4 := Vec4{v[0], v[1], v[2], 1.0}
+            p := transform_vertex_4(v4, per)
+            px := p[0] / p[3]
+            py := p[1] / p[3]
+            screen_verts[j] = Vec2i{
+                i32((px + 1.0) * f32(SCREEN_WIDTH) / 2.0),
+                i32((1.0 - py) * f32(SCREEN_HEIGHT) / 2.0),
+            }
+        }
+
+        // split quad into 2 triangles and fill
+        color := face_colors[i % 6]
+        fill_triangle(app, screen_verts[0], screen_verts[1], screen_verts[2], color)
+        fill_triangle(app, screen_verts[0], screen_verts[2], screen_verts[3], color)
     }
 }
 
@@ -321,6 +337,18 @@ matrix_multiply :: proc(a: Mat4, b: Mat4) -> Mat4 {
         }
     }
     return c
+}
+
+cross_product :: proc(a, b: Vec3) -> Vec3 {
+    return Vec3 {
+        (a[1] * b[2]) - (a[2] * b[1]),
+        (a[2] * b[0]) - (a[0] * b[2]),
+        (a[0] * b[1]) - (a[1] * b[0]),
+    }
+}
+
+dot_product :: proc(a, b: Vec3) -> f32 {
+    return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2])
 }
 
 main_loop :: proc(app: ^App) {
